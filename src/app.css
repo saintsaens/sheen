@@ -1,0 +1,30 @@
+/* Primer's BaseStyles sets no font size, so match GitHub's 14px body text explicitly. */
+body {
+  margin: 0;
+  font-size: var(--text-body-size-medium);
+  line-height: var(--text-body-lineHeight-medium);
+  background: var(--bgColor-default);
+  color: var(--fgColor-default);
+}
+
+.muted {
+  color: var(--fgColor-muted);
+  font-weight: normal;
+}
+
+.centered {
+  max-width: 640px;
+  margin: var(--base-size-24) auto;
+  padding: 0 var(--base-size-16);
+  display: flex;
+  justify-content: center;
+}
+
+.home {
+  max-width: 480px;
+  margin: 20vh auto 0;
+  padding: 0 var(--base-size-16);
+  display: flex;
+  flex-direction: column;
+  gap: var(--base-size-12);
+}
