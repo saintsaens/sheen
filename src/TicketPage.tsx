@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Avatar, Banner, Button, Heading, Label, Link, RelativeTime, Spinner, type LabelProps } from '@primer/react'
+import { Avatar, Banner, Button, Heading, Label, Link, RelativeTime, SkeletonBox, VisuallyHidden, type LabelProps } from '@primer/react'
+import { SkeletonAvatar, SkeletonText } from '@primer/react/experimental'
 import { FileIcon, LinkExternalIcon } from '@primer/octicons-react'
 import { sanitize } from './sanitize.ts'
 import type { Comment, Person, StatusCategory, Ticket } from './types.ts'
@@ -35,13 +36,7 @@ export function TicketPage({ id }: { id: number }) {
     document.title = state.kind === 'ready' ? `#${id} ${state.ticket.subject} · Sheen` : `#${id} · Sheen`
   }, [id, state])
 
-  if (state.kind === 'loading') {
-    return (
-      <div className="centered">
-        <Spinner srText={`Loading ticket #${id}`} />
-      </div>
-    )
-  }
+  if (state.kind === 'loading') return <TicketSkeleton id={id} />
   if (state.kind === 'error') {
     return (
       <div className="centered">
@@ -107,6 +102,46 @@ export function TicketPage({ id }: { id: number }) {
               </span>
             )}
           </Property>
+        </dl>
+      </aside>
+    </div>
+  )
+}
+
+// The page layout with placeholders, shown while the ticket loads.
+function TicketSkeleton({ id }: { id: number }) {
+  return (
+    <div className="ticket" aria-busy="true">
+      <VisuallyHidden>Loading ticket #{id}</VisuallyHidden>
+      <header className="ticket-header" aria-hidden="true">
+        <SkeletonBox width="48px" height="24px" />
+        <Heading as="h1" variant="small" className="ticket-subject">
+          <SkeletonText size="titleSmall" maxWidth="360px" />
+        </Heading>
+        <SkeletonBox width="128px" height="28px" />
+      </header>
+
+      <main className="conversation" aria-hidden="true">
+        {[3, 2].map((lines, i) => (
+          <article key={i} className="comment">
+            <header className="comment-header">
+              <SkeletonAvatar size={20} />
+              <SkeletonText maxWidth="160px" />
+            </header>
+            <SkeletonText lines={lines} />
+          </article>
+        ))}
+      </main>
+
+      <aside className="properties" aria-hidden="true">
+        <dl>
+          {['Requester', 'Organization', 'Assignee', 'Group', 'Priority', 'Type', 'Created', 'Updated', 'Tags'].map(
+            (label) => (
+              <Property key={label} label={label}>
+                <SkeletonText maxWidth="120px" />
+              </Property>
+            ),
+          )}
         </dl>
       </aside>
     </div>
