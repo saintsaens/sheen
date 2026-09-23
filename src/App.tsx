@@ -1,5 +1,6 @@
 import { useEffect, useState, type SubmitEvent } from 'react'
 import { Button, Heading, Stack, TextInput } from '@primer/react'
+import { TicketPage } from './TicketPage.tsx'
 
 function usePath() {
   const [path, setPath] = useState(location.pathname)
@@ -17,9 +18,8 @@ function usePath() {
 
 export function App() {
   const { path, navigate } = usePath()
-  // Ticket pages come next; for now the app only has the home page.
-  void path
-  return <Home onOpen={(id) => navigate(`/tickets/${id}`)} />
+  const ticketId = path.match(/^\/tickets\/(\d+)$/)?.[1]
+  return ticketId ? <TicketPage key={ticketId} id={Number(ticketId)} /> : <Home onOpen={(id) => navigate(`/tickets/${id}`)} />
 }
 
 function Home({ onOpen }: { onOpen: (id: string) => void }) {
