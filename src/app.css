@@ -29,14 +29,14 @@ body {
   gap: var(--base-size-12);
 }
 
-/* Ticket: header across the top, conversation and properties side by side. */
+/* Ticket: header across the top; below it, reading, answering and properties side by side. */
 .ticket {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 280px;
   grid-template-rows: auto 1fr;
   grid-template-areas:
-    'header header'
-    'conversation properties';
+    'header header header'
+    'conversation composer properties';
   min-height: 100vh;
 }
 
@@ -168,6 +168,83 @@ body {
   gap: var(--base-size-4);
 }
 
+/* The composer stays in view while the conversation scrolls. */
+.composer-column {
+  grid-area: composer;
+  border-left: 1px solid var(--borderColor-default);
+}
+
+.composer {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--base-size-8);
+  padding: var(--base-size-16);
+}
+
+.composer-input.internal {
+  background: var(--bgColor-attention-muted);
+}
+
+.composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--base-size-8);
+}
+
+/* The submit button takes the color of the status it submits as, like the status labels. */
+.composer-actions {
+  --button-primary-bgColor-rest: var(--status-color);
+  --button-primary-bgColor-hover: color-mix(in srgb, var(--status-color), black 10%);
+  --button-primary-bgColor-active: color-mix(in srgb, var(--status-color), black 20%);
+  --button-primary-bgColor-disabled: color-mix(in srgb, var(--status-color) 50%, var(--bgColor-default));
+  --button-primary-borderColor-disabled: transparent;
+  --button-primary-borderColor-rest: transparent;
+  --button-primary-borderColor-hover: transparent;
+  --button-primary-borderColor-active: transparent;
+}
+
+.composer-actions.status-open {
+  --status-color: var(--bgColor-success-emphasis);
+}
+
+.composer-actions.status-pending {
+  --status-color: var(--bgColor-accent-emphasis);
+}
+
+.composer-actions.status-hold {
+  --status-color: var(--bgColor-neutral-emphasis);
+}
+
+.composer-actions.status-solved {
+  --status-color: var(--bgColor-done-emphasis);
+}
+
+.status-dot {
+  display: inline-block;
+  width: var(--base-size-8);
+  height: var(--base-size-8);
+  border-radius: 50%;
+}
+
+.status-dot.open {
+  background: var(--fgColor-success);
+}
+
+.status-dot.pending {
+  background: var(--fgColor-accent);
+}
+
+.status-dot.hold {
+  background: var(--fgColor-muted);
+}
+
+.status-dot.solved {
+  background: var(--fgColor-done);
+}
+
 .properties {
   grid-area: properties;
   padding: var(--base-size-16);
@@ -198,11 +275,32 @@ body {
   gap: var(--base-size-4);
 }
 
+/* Narrower screens: the composer moves below the conversation. */
+@media (max-width: 1199px) {
+  .ticket {
+    grid-template-columns: minmax(0, 1fr) 280px;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      'header header'
+      'conversation properties'
+      'composer properties';
+  }
+
+  .composer-column {
+    border-left: 0;
+    border-top: 1px solid var(--borderColor-default);
+  }
+
+  .composer {
+    position: static;
+  }
+}
+
 @media (max-width: 768px) {
   .ticket {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto 1fr;
-    grid-template-areas: 'header' 'properties' 'conversation';
+    grid-template-rows: auto auto 1fr auto;
+    grid-template-areas: 'header' 'properties' 'conversation' 'composer';
   }
 
   .properties {

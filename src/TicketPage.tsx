@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Avatar, Banner, Button, Heading, Label, Link, RelativeTime, SkeletonBox, VisuallyHidden, type LabelProps } from '@primer/react'
 import { SkeletonAvatar, SkeletonText } from '@primer/react/experimental'
 import { FileIcon, LinkExternalIcon } from '@primer/octicons-react'
+import { Composer } from './Composer.tsx'
 import { sanitize } from './sanitize.ts'
 import type { Comment, Person, StatusCategory, Ticket } from './types.ts'
 
@@ -70,6 +71,10 @@ export function TicketPage({ id }: { id: number }) {
         ))}
       </main>
 
+      <div className="composer-column">
+        <Composer requester={ticket.requester?.name ?? null} currentStatus={ticket.status.category} />
+      </div>
+
       <aside className="properties" aria-label="Ticket properties">
         <dl>
           <Property label="Requester">
@@ -132,6 +137,13 @@ function TicketSkeleton({ id }: { id: number }) {
           </article>
         ))}
       </main>
+
+      <div className="composer-column" aria-hidden="true">
+        <div className="composer">
+          <SkeletonBox width="200px" height="28px" />
+          <SkeletonBox height="218px" />
+        </div>
+      </div>
 
       <aside className="properties" aria-hidden="true">
         <dl>
