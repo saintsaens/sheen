@@ -18,3 +18,10 @@ Where accessibility matters, we follow the [GOV.UK Design System](https://design
 
 Agents sign in with their own Zendesk account (OAuth), so every action is attributed to the agent who took it. A small backend runs the sign-in and keeps the tokens. The browser gets only a secure session cookie, and the backend forwards API calls to Zendesk.
 
+## v0.1
+
+A single ticket in three columns: the conversation (public replies, internal notes, attachments), an answer composer, and the ticket's properties.
+
+The composer has public reply or internal note, "Submit as" a status, and ⌘Enter / Ctrl+Enter to submit. It doesn't send to Zendesk yet.
+
+For now the backend uses one Zendesk API token from `.env` instead of per-agent sign-in.
