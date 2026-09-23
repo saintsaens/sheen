@@ -2,15 +2,16 @@ import { useEffect, useRef, useState, type KeyboardEvent, type SubmitEvent } fro
 import { ActionList, ActionMenu, Banner, Button, ButtonGroup, IconButton, SegmentedControl, Textarea } from '@primer/react'
 import { KeybindingHint } from '@primer/react/experimental'
 import { TriangleDownIcon } from '@primer/octicons-react'
+import { useShortcuts, useSingleKeysEnabled } from './shortcuts.ts'
 import type { StatusCategory } from './types.ts'
 
 type Mode = 'public' | 'internal'
 
 // The statuses an agent can submit as. Custom statuses come later, once sending is connected.
 const STATUSES = [
-  { category: 'open', label: 'Open', action: 'Submit as Open' },
-  { category: 'pending', label: 'Pending', action: 'Submit as Pending' },
-  { category: 'hold', label: 'On-hold', action: 'Submit as On-hold' },
+  { category: 'open', label: 'Open', action: 'Send and keep Open' },
+  { category: 'pending', label: 'Pending', action: 'Send as Pending' },
+  { category: 'hold', label: 'On-hold', action: 'Send as On-hold' },
   { category: 'solved', label: 'Solved', action: 'Solve' },
 ] as const satisfies { category: StatusCategory; label: string; action: string }[]
 
@@ -21,10 +22,16 @@ export function Composer({ requester, currentStatus }: { requester: string | nul
   const [body, setBody] = useState('')
   const [status, setStatus] = useState<SubmitStatus>('solved')
   const [notice, setNotice] = useState(false)
+  const [focused, setFocused] = useState(false)
   const input = useRef<HTMLTextAreaElement>(null)
+  const singleKeys = useSingleKeysEnabled()
 
   // Focus the composer when the ticket opens, without scrolling: on narrow screens it sits below the conversation.
-  useEffect(() => input.current?.focus({ preventScroll: true }), [])
+  // No focus event fires when the window itself isn't focused (e.g. a background tab), so set the state directly.
+  useEffect(() => {
+    input.current?.focus({ preventScroll: true })
+    setFocused(document.activeElement === input.current)
+  }, [])
 
   const action = STATUSES.find((s) => s.category === status)!.action
   // Submitting only a status change, with no comment, is valid.
@@ -34,11 +41,24 @@ export function Composer({ requester, currentStatus }: { requester: string | nul
     if (canSubmit) setNotice(true)
   }
 
+  const chooseStatus = (next: SubmitStatus) => {
+    setStatus(next)
+    setNotice(false)
+  }
+
+  useShortcuts({
+    'Mod+Enter': submit,
+    r: () => input.current?.focus(),
+    i: () => setMode((m) => (m === 'public' ? 'internal' : 'public')),
+    o: () => chooseStatus('open'),
+    p: () => chooseStatus('pending'),
+    h: () => chooseStatus('hold'),
+    s: () => chooseStatus('solved'),
+  })
+
+  // Esc leaves the composer for reading mode, where single-key shortcuts work.
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault()
-      submit()
-    }
+    if (e.key === 'Escape') e.currentTarget.blur()
   }
 
   return (
@@ -66,12 +86,19 @@ export function Composer({ requester, currentStatus }: { requester: string | nul
           setNotice(false)
         }}
         onKeyDown={onKeyDown}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         rows={10}
         resize="vertical"
         block
       />
 
       <div className={`composer-actions status-${status}`}>
+        {!focused && singleKeys && (
+          <span className="reading-hint muted">
+            <KeybindingHint keys="r" /> to reply · <KeybindingHint keys="?" /> for shortcuts
+          </span>
+        )}
         <ButtonGroup>
           <Button
             type="submit"
@@ -89,7 +116,7 @@ export function Composer({ requester, currentStatus }: { requester: string | nul
             <ActionMenu.Overlay align="end">
               <ActionList selectionVariant="single">
                 {STATUSES.map((s) => (
-                  <ActionList.Item key={s.category} selected={s.category === status} onSelect={() => setStatus(s.category)}>
+                  <ActionList.Item key={s.category} selected={s.category === status} onSelect={() => chooseStatus(s.category)}>
                     <ActionList.LeadingVisual>
                       <span className={`status-dot ${s.category}`} />
                     </ActionList.LeadingVisual>

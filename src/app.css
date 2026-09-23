@@ -194,6 +194,11 @@ body {
   gap: var(--base-size-8);
 }
 
+.reading-hint {
+  margin-right: auto;
+  font-size: var(--text-body-size-small);
+}
+
 /* The submit button takes the color of the status it submits as, like the status labels. */
 .composer-actions {
   --button-primary-bgColor-rest: var(--status-color);
@@ -307,4 +312,48 @@ body {
     border-left: 0;
     border-bottom: 1px solid var(--borderColor-default);
   }
+}
+
+/* Keyboard shortcuts dialog */
+.shortcut-group + .shortcut-group {
+  margin-top: var(--base-size-16);
+}
+
+.shortcut-group-title {
+  margin: 0 0 var(--base-size-4);
+  font-size: var(--text-body-size-small);
+  color: var(--fgColor-muted);
+}
+
+.shortcut-group dl {
+  margin: 0;
+}
+
+.shortcut {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--base-size-8);
+  padding: var(--base-size-4) 0;
+}
+
+.shortcut dd {
+  margin: 0;
+}
+
+.shortcut.disabled {
+  opacity: 0.5;
+}
+
+.shortcut-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--base-size-16);
+  margin-top: var(--base-size-16);
+  padding-top: var(--base-size-16);
+  border-top: 1px solid var(--borderColor-muted);
+}
+
+.shortcut-setting p {
+  margin: 0;
 }

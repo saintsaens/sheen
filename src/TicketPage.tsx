@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Avatar, Banner, Button, Heading, Label, Link, RelativeTime, SkeletonBox, VisuallyHidden, type LabelProps } from '@primer/react'
-import { SkeletonAvatar, SkeletonText } from '@primer/react/experimental'
+import { KeybindingHint, SkeletonAvatar, SkeletonText } from '@primer/react/experimental'
 import { FileIcon, LinkExternalIcon } from '@primer/octicons-react'
 import { Composer } from './Composer.tsx'
+import { ShortcutsDialog } from './ShortcutsDialog.tsx'
+import { useShortcuts } from './shortcuts.ts'
 import { sanitize } from './sanitize.ts'
 import type { Comment, Person, StatusCategory, Ticket } from './types.ts'
 
@@ -19,6 +21,8 @@ type State = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 
 
 export function TicketPage({ id }: { id: number }) {
   const [state, setState] = useState<State>({ kind: 'loading' })
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  useShortcuts({ '?': () => setShowShortcuts(true) })
 
   useEffect(() => {
     const controller = new AbortController()
@@ -56,6 +60,9 @@ export function TicketPage({ id }: { id: number }) {
         <Heading as="h1" variant="small" className="ticket-subject">
           {ticket.subject} <span className="muted">#{ticket.id}</span>
         </Heading>
+        <Button size="small" variant="invisible" onClick={() => setShowShortcuts(true)} trailingVisual={<KeybindingHint keys="?" size="small" />}>
+          Shortcuts
+        </Button>
         <Button as="a" href={ticket.url} target="_blank" rel="noopener noreferrer" size="small" trailingVisual={LinkExternalIcon}>
           Open in Zendesk
         </Button>
@@ -109,6 +116,8 @@ export function TicketPage({ id }: { id: number }) {
           </Property>
         </dl>
       </aside>
+
+      {showShortcuts && <ShortcutsDialog onClose={() => setShowShortcuts(false)} />}
     </div>
   )
 }
