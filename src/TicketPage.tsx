@@ -67,7 +67,11 @@ export function TicketPage({ id }: { id: number }) {
 
       <main className="conversation" aria-label="Conversation">
         {ticket.comments.map((comment) => (
-          <CommentView key={comment.id} comment={comment} />
+          <CommentView
+            key={comment.id}
+            comment={comment}
+            collapseFlaggedArticle={ticket.tags.includes('knowledge_capture_flagged_article')}
+          />
         ))}
       </main>
 
@@ -109,8 +113,8 @@ export function TicketPage({ id }: { id: number }) {
   )
 }
 
-function CommentView({ comment }: { comment: Comment }) {
-  const html = useMemo(() => sanitize(comment.html), [comment.html])
+function CommentView({ comment, collapseFlaggedArticle }: { comment: Comment; collapseFlaggedArticle: boolean }) {
+  const html = useMemo(() => sanitize(comment.html, { collapseFlaggedArticle }), [comment.html, collapseFlaggedArticle])
   return (
     <article className={comment.public ? 'comment' : 'comment internal'}>
       <header className="comment-header">

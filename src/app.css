@@ -103,6 +103,45 @@ body {
   border-radius: var(--borderRadius-small);
 }
 
+/* Collapsed parts of a flagged article (see collapseArticle.ts). */
+.collapsed-article {
+  margin: var(--base-size-8) 0;
+}
+
+.collapsed-article > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--base-size-4);
+  padding: var(--base-size-4) var(--base-size-8);
+  border-radius: var(--borderRadius-medium);
+  color: var(--fgColor-muted);
+  font-size: var(--text-body-size-small);
+  cursor: pointer;
+  list-style: none;
+}
+
+.collapsed-article > summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsed-article > summary::before {
+  content: '▸';
+  font-size: var(--text-body-size-medium);
+}
+
+.collapsed-article[open] > summary::before {
+  content: '▾';
+}
+
+.collapsed-article > summary:hover {
+  background: var(--control-transparent-bgColor-hover);
+}
+
+.collapsed-article > summary:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: -2px;
+}
+
 .comment-body pre,
 .comment-body code {
   font-family: var(--fontStack-monospace);
