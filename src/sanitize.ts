@@ -50,7 +50,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 })
 
-export function sanitize(html: string) {
+export function sanitize(html: string, { flaggedArticle = false } = {}) {
   const fragment = DOMPurify.sanitize(html, {
     FORBID_TAGS: ['style'],
     FORBID_ATTR: ['color', 'bgcolor', 'background', 'face', 'size', 'align'],
@@ -66,7 +66,29 @@ export function sanitize(html: string) {
     img.replaceWith(link)
     link.append(img)
   }
+  if (flaggedArticle) highlightFeedback(fragment)
   const container = document.createElement('div')
   container.append(fragment)
   return container.innerHTML
+}
+
+// Comments from Zendesk's "flag article" feature contain the whole help center article, with the agent's
+// feedback in the only block given a background. Mark it so it stands out from the article around it.
+function highlightFeedback(root: DocumentFragment) {
+  const panel = root.querySelector<HTMLElement>('[style*="background-color"]')
+  if (!panel) return
+  panel.style.removeProperty('background-color')
+  panel.classList.add('article-feedback')
+  // Zendesk heads the feedback with a "Feedback" label; the panel's styling already says what it is.
+  const label = Array.from(panel.querySelectorAll('*')).find((el) => el.textContent?.trim() === 'Feedback')
+  label?.remove()
+
+  // Zendesk frames the flagged block, text and feedback together; drop that frame so only the feedback stands out.
+  let frame = panel.parentElement
+  while (frame && !Array.from(frame.style).some((property) => property.startsWith('border-'))) frame = frame.parentElement
+  if (!frame) return
+  for (const property of Array.from(frame.style)) {
+    if (property.startsWith('border-') || property.startsWith('padding-')) frame.style.removeProperty(property)
+  }
+  if (frame.style.length === 0) frame.removeAttribute('style')
 }

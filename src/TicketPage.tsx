@@ -70,7 +70,11 @@ export function TicketPage({ id }: { id: number }) {
 
       <main className="conversation" aria-label="Conversation">
         {ticket.comments.map((comment) => (
-          <CommentView key={comment.id} comment={comment} />
+          <CommentView
+            key={comment.id}
+            comment={comment}
+            flaggedArticle={ticket.tags.includes('knowledge_capture_flagged_article')}
+          />
         ))}
       </main>
 
@@ -165,8 +169,8 @@ function TicketSkeleton({ id }: { id: number }) {
   )
 }
 
-function CommentView({ comment }: { comment: Comment }) {
-  const html = useMemo(() => sanitize(comment.html), [comment.html])
+function CommentView({ comment, flaggedArticle }: { comment: Comment; flaggedArticle: boolean }) {
+  const html = useMemo(() => sanitize(comment.html, { flaggedArticle }), [comment.html, flaggedArticle])
   return (
     <article className={comment.public ? 'comment' : 'comment internal'}>
       <header className="comment-header">

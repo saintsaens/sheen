@@ -103,6 +103,17 @@ body {
   border-radius: var(--borderRadius-small);
 }
 
+/* Agent feedback inside a flagged article (see highlightFeedback in sanitize.ts). */
+.comment-body .article-feedback {
+  margin: var(--base-size-16) 0;
+  padding: var(--base-size-12) var(--base-size-16);
+  background: var(--bgColor-accent-muted);
+  border: var(--borderWidth-thin) solid var(--borderColor-accent-muted);
+  border-left: var(--borderWidth-thicker) solid var(--borderColor-accent-emphasis);
+  border-radius: var(--borderRadius-medium);
+  box-shadow: var(--shadow-resting-medium);
+}
+
 .comment-body pre,
 .comment-body code {
   font-family: var(--fontStack-monospace);
