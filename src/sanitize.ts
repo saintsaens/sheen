@@ -3,7 +3,6 @@
 // typography is dropped, so content reads well in light and dark mode at the app's density.
 
 import DOMPurify from 'dompurify'
-import { collapseAroundFeedback } from './collapseArticle.ts'
 
 // Longhand CSS properties we keep. None of them can load a URL.
 const KEPT_PROPERTY =
@@ -51,7 +50,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 })
 
-export function sanitize(html: string, { collapseFlaggedArticle = false } = {}) {
+export function sanitize(html: string) {
   const fragment = DOMPurify.sanitize(html, {
     FORBID_TAGS: ['style'],
     FORBID_ATTR: ['color', 'bgcolor', 'background', 'face', 'size', 'align'],
@@ -67,7 +66,6 @@ export function sanitize(html: string, { collapseFlaggedArticle = false } = {}) 
     img.replaceWith(link)
     link.append(img)
   }
-  if (collapseFlaggedArticle) collapseAroundFeedback(fragment)
   const container = document.createElement('div')
   container.append(fragment)
   return container.innerHTML
