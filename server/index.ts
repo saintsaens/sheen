@@ -2,7 +2,7 @@
 // v0.1 authenticates with a single API token from .env; per-agent OAuth comes later (see SPEC.md).
 
 import { createServer, type IncomingMessage } from 'node:http'
-import type { Answer, Comment, Field, Person, StatusCategory, Ticket } from '../src/types.ts'
+import type { Answer, Comment, Upload, Field, Person, StatusCategory, Ticket } from '../src/types.ts'
 
 const { ZENDESK_SUBDOMAIN, ZENDESK_EMAIL, ZENDESK_API_TOKEN } = process.env
 if (!ZENDESK_SUBDOMAIN || !ZENDESK_EMAIL || !ZENDESK_API_TOKEN) {
@@ -21,12 +21,21 @@ class ZendeskError extends Error {
   }
 }
 
-async function zendesk(path: string, { method = 'GET', body }: { method?: string; body?: unknown } = {}): Promise<any> {
+// A Buffer body is sent as is, with contentType; anything else as JSON.
+async function zendesk(
+  path: string,
+  { method = 'GET', body, contentType }: { method?: string; body?: unknown; contentType?: string } = {},
+): Promise<any> {
   const url = path.startsWith('http') ? path : `${ZENDESK}/api/v2${path}`
+  const raw = body instanceof Buffer
   const res = await fetch(url, {
     method,
-    headers: { Authorization: AUTH, Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: {
+      Authorization: AUTH,
+      Accept: 'application/json',
+      ...(body !== undefined && { 'Content-Type': raw ? (contentType ?? 'application/octet-stream') : 'application/json' }),
+    },
+    body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
   })
   if (!res.ok) throw new ZendeskError(res.status, `Zendesk ${res.status} on ${new URL(url).pathname}`)
   return res.json()
@@ -154,30 +163,54 @@ class BadRequest extends Error {}
 
 const ANSWER_STATUSES = ['open', 'pending', 'hold', 'solved']
 
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
+async function readBody(req: IncomingMessage, limit = 1024 * 1024): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const chunk of req) {
+    size += chunk.length
+    if (size > limit) throw new BadRequest(`Larger than ${limit / 1024 / 1024} MB`)
+    chunks.push(chunk)
+  }
+  return Buffer.concat(chunks)
+}
+
 async function readAnswer(req: IncomingMessage): Promise<Answer> {
-  let raw = ''
-  for await (const chunk of req) raw += chunk
   let answer: any
   try {
-    answer = JSON.parse(raw)
-  } catch {
-    throw new BadRequest('Invalid JSON')
+    answer = JSON.parse((await readBody(req)).toString())
+  } catch (err) {
+    throw err instanceof BadRequest ? err : new BadRequest('Invalid JSON')
   }
   if (
-    typeof answer?.body !== 'string' ||
+    typeof answer?.html !== 'string' ||
+    !Array.isArray(answer.uploads) ||
+    !answer.uploads.every((token: unknown) => typeof token === 'string') ||
     typeof answer.public !== 'boolean' ||
     !ANSWER_STATUSES.includes(answer.status) ||
     typeof answer.updatedAt !== 'string'
   ) {
-    throw new BadRequest('Expected { body, public, status, updatedAt }')
+    throw new BadRequest('Expected { html, uploads, public, status, updatedAt }')
   }
   return answer
+}
+
+// Uploads an image for an answer. Zendesk keeps it unattached until an answer references its token.
+async function upload(req: IncomingMessage, fileName: string): Promise<Upload> {
+  const contentType = req.headers['content-type'] ?? ''
+  if (!contentType.startsWith('image/')) throw new BadRequest('Only images can be uploaded')
+  const { upload } = await zendesk(`/uploads.json?filename=${encodeURIComponent(fileName)}`, {
+    method: 'POST',
+    body: await readBody(req, MAX_UPLOAD_BYTES),
+    contentType,
+  })
+  return { token: upload.token, url: upload.attachment.content_url }
 }
 
 // Adds the comment and sets the status in one update. safe_update makes Zendesk refuse it with a 409
 // if the ticket changed after the agent loaded it, instead of silently answering a stale conversation.
 async function answerTicket(id: number, answer: Answer): Promise<Ticket> {
-  const body = answer.body.trim()
   await zendesk(`/tickets/${id}.json`, {
     method: 'PUT',
     body: {
@@ -185,7 +218,7 @@ async function answerTicket(id: number, answer: Answer): Promise<Ticket> {
         status: answer.status,
         safe_update: true,
         updated_stamp: answer.updatedAt,
-        ...(body && { comment: { body, public: answer.public } }),
+        ...(answer.html && { comment: { html_body: answer.html, public: answer.public, uploads: answer.uploads } }),
       },
     },
   })
@@ -203,11 +236,15 @@ createServer(async (req, res) => {
     res.writeHead(status, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify(body))
   }
-  const match = req.url?.match(/^\/api\/tickets\/(\d+)$/)
-  if (!match || (req.method !== 'GET' && req.method !== 'PUT')) return send(404, { error: 'Not found' })
-  const id = Number(match[1])
+  const url = new URL(req.url ?? '/', 'http://localhost')
+  const ticket = url.pathname.match(/^\/api\/tickets\/(\d+)$/)
   try {
-    send(200, req.method === 'PUT' ? await answerTicket(id, await readAnswer(req)) : await getTicket(id))
+    if (ticket && req.method === 'GET') return send(200, await getTicket(Number(ticket[1])))
+    if (ticket && req.method === 'PUT') return send(200, await answerTicket(Number(ticket[1]), await readAnswer(req)))
+    if (url.pathname === '/api/uploads' && req.method === 'POST') {
+      return send(200, await upload(req, url.searchParams.get('filename') || 'image.png'))
+    }
+    send(404, { error: 'Not found' })
   } catch (err) {
     const status = err instanceof ZendeskError ? err.status : err instanceof BadRequest ? 400 : 500
     console.error(err)

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type SubmitEvent } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type SubmitEvent } from 'react'
 import { ActionList, ActionMenu, Banner, Button, ButtonGroup, ConfirmationDialog, IconButton, SegmentedControl, Textarea } from '@primer/react'
 import { KeybindingHint } from '@primer/react/experimental'
 import { TriangleDownIcon } from '@primer/octicons-react'
+import { answerHtml, imageTag, referencedImages } from './answerHtml.ts'
 import { useShortcuts, useSingleKeysEnabled } from './shortcuts.ts'
-import type { Answer, StatusCategory, Ticket } from './types.ts'
+import type { Answer, StatusCategory, Ticket, Upload } from './types.ts'
 
 type Mode = 'public' | 'internal'
 
@@ -25,6 +26,10 @@ export function Composer({ ticket, onSent }: { ticket: Ticket; onSent: (ticket: 
   const [body, setBody] = useState('')
   const [status, setStatus] = useState<SubmitStatus>('solved')
   const [stage, setStage] = useState<Stage>({ kind: 'editing' })
+  // Images uploaded from this composer, by Zendesk URL, with a local copy to preview them.
+  const images = useRef(new Map<string, Upload & { preview: string }>())
+  const [uploading, setUploading] = useState(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [focused, setFocused] = useState(false)
   const input = useRef<HTMLTextAreaElement>(null)
   const singleKeys = useSingleKeysEnabled()
@@ -39,7 +44,7 @@ export function Composer({ ticket, onSent }: { ticket: Ticket; onSent: (ticket: 
   const { action, label } = STATUSES.find((s) => s.category === status)!
   const hasComment = body.trim() !== ''
   // Submitting only a status change, with no comment, is valid.
-  const canSubmit = hasComment || status !== currentStatus
+  const canSubmit = (hasComment || status !== currentStatus) && uploading === 0
   const busy = stage.kind === 'confirming' || stage.kind === 'sending'
 
   // Submitting only opens the confirmation: this writes to the production Zendesk.
@@ -49,7 +54,15 @@ export function Composer({ ticket, onSent }: { ticket: Ticket; onSent: (ticket: 
 
   const send = async () => {
     setStage({ kind: 'sending' })
-    const answer: Answer = { body, public: mode === 'public', status, updatedAt: ticket.updatedAt }
+    const used = referencedImages(body)
+    const sent = [...images.current.values()].filter((image) => used.has(image.url))
+    const answer: Answer = {
+      html: answerHtml(body, new Map(sent.map((image) => [image.url, image.url]))),
+      uploads: sent.map((image) => image.token),
+      public: mode === 'public',
+      status,
+      updatedAt: ticket.updatedAt,
+    }
     try {
       const res = await fetch(`/api/tickets/${ticket.id}`, {
         method: 'PUT',
@@ -59,6 +72,8 @@ export function Composer({ ticket, onSent }: { ticket: Ticket; onSent: (ticket: 
       const result = await res.json()
       if (!res.ok) return setStage({ kind: 'failed', message: result.error })
       setBody('')
+      images.current.forEach((image) => URL.revokeObjectURL(image.preview))
+      images.current.clear()
       setStage({ kind: 'sent' })
       onSent(result)
     } catch (err) {
@@ -94,6 +109,48 @@ export function Composer({ ticket, onSent }: { ticket: Ticket; onSent: (ticket: 
     s: () => chooseStatus('solved'),
   })
 
+  // Each image gets its own line at the cursor: a placeholder while it uploads, then its image tag.
+  const addImages = (files: File[]) => {
+    const field = input.current
+    if (!field) return
+    const before = field.value.slice(0, field.selectionStart)
+    const after = field.value.slice(field.selectionEnd)
+    const uploads = files.map((file) => ({ file, placeholder: `![Uploading ${file.name} (${crypto.randomUUID().slice(0, 4)})…]()` }))
+    const inserted = (before && !before.endsWith('\n') ? '\n' : '') + uploads.map((u) => u.placeholder).join('\n') + '\n'
+    setBody(before + inserted + after)
+    requestAnimationFrame(() => field.setSelectionRange(before.length + inserted.length, before.length + inserted.length))
+    setUploadError(null)
+    for (const { file, placeholder } of uploads) {
+      setUploading((n) => n + 1)
+      uploadImage(file)
+        .then((image) => {
+          images.current.set(image.url, image)
+          setBody((text) => text.replace(placeholder, imageTag(file.name, image.url)))
+        })
+        .catch((err) => {
+          setBody((text) => text.replace(placeholder + '\n', '').replace(placeholder, ''))
+          setUploadError(`${file.name}: ${err instanceof Error ? err.message : String(err)}`)
+        })
+        .finally(() => setUploading((n) => n - 1))
+    }
+  }
+
+  const imageFiles = (list: FileList) => Array.from(list).filter((file) => file.type.startsWith('image/'))
+
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = imageFiles(e.clipboardData.files)
+    if (files.length === 0) return
+    e.preventDefault()
+    addImages(files)
+  }
+
+  const onDrop = (e: DragEvent<HTMLTextAreaElement>) => {
+    const files = imageFiles(e.dataTransfer.files)
+    if (files.length === 0) return
+    e.preventDefault()
+    addImages(files)
+  }
+
   // Esc leaves the composer for reading mode, where single-key shortcuts work.
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') e.currentTarget.blur()
@@ -124,6 +181,8 @@ export function Composer({ ticket, onSent }: { ticket: Ticket; onSent: (ticket: 
           if (!busy) setStage({ kind: 'editing' })
         }}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
+        onDrop={onDrop}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         rows={10}
@@ -192,10 +251,20 @@ export function Composer({ ticket, onSent }: { ticket: Ticket; onSent: (ticket: 
             <dt>Status</dt>
             <dd>{status === currentStatus ? `${label} (unchanged)` : `${ticket.status.label} → ${label}`}</dd>
           </dl>
-          {hasComment && <blockquote className={mode === 'internal' ? 'confirm-body internal' : 'confirm-body'}>{body.trim()}</blockquote>}
+          {hasComment && (
+            <div
+              className={mode === 'internal' ? 'confirm-body internal' : 'confirm-body'}
+              dangerouslySetInnerHTML={{
+                __html: answerHtml(body, new Map([...images.current.values()].map((image) => [image.url, image.preview]))),
+              }}
+            />
+          )}
         </ConfirmationDialog>
       )}
 
+      {uploadError && (
+        <Banner variant="critical" title="Couldn't upload the image" description={uploadError} onDismiss={() => setUploadError(null)} />
+      )}
       {stage.kind === 'sent' && (
         <Banner variant="success" title="Sent to Zendesk" onDismiss={() => setStage({ kind: 'editing' })} />
       )}
@@ -211,3 +280,13 @@ export function Composer({ ticket, onSent }: { ticket: Ticket; onSent: (ticket: 
   )
 }
 
+async function uploadImage(file: File): Promise<Upload & { preview: string }> {
+  const res = await fetch(`/api/uploads?filename=${encodeURIComponent(file.name)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  })
+  const result = await res.json()
+  if (!res.ok) throw new Error(result.error)
+  return { ...result, preview: URL.createObjectURL(file) }
+}

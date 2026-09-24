@@ -49,11 +49,19 @@ export interface Ticket {
   comments: Comment[]
 }
 
-// What the composer sends. An empty body only changes the status.
+// What the composer sends. An empty html only changes the status.
 export interface Answer {
-  body: string
+  html: string
+  // Upload tokens of the inline images in html.
+  uploads: string[]
   public: boolean
   status: 'open' | 'pending' | 'hold' | 'solved'
   // The ticket's updatedAt when the agent loaded it, so Zendesk rejects the answer if the ticket changed since.
   updatedAt: string
+}
+
+// An image uploaded to Zendesk, ready to be referenced from an answer.
+export interface Upload {
+  token: string
+  url: string
 }

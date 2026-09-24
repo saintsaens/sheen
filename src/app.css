@@ -194,7 +194,21 @@ body {
   padding: var(--base-size-8) var(--base-size-12);
   border: var(--borderWidth-thin) solid var(--borderColor-default);
   border-radius: var(--borderRadius-medium);
-  white-space: pre-wrap;
+}
+
+.confirm-body p {
+  margin: 0 0 var(--base-size-8);
+}
+
+.confirm-body p:last-child {
+  margin-bottom: 0;
+}
+
+.confirm-body img {
+  max-width: 100%;
+  height: auto;
+  border: var(--borderWidth-thin) solid var(--borderColor-muted);
+  border-radius: var(--borderRadius-small);
 }
 
 .confirm-body.internal {
