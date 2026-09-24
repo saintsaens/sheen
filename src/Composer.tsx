@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type SubmitEvent } from 'react'
-import { ActionList, ActionMenu, Banner, Button, ButtonGroup, IconButton, SegmentedControl, Textarea } from '@primer/react'
+import { ActionList, ActionMenu, Banner, Button, ButtonGroup, ConfirmationDialog, IconButton, SegmentedControl, Textarea } from '@primer/react'
 import { KeybindingHint } from '@primer/react/experimental'
 import { TriangleDownIcon } from '@primer/octicons-react'
 import { useShortcuts, useSingleKeysEnabled } from './shortcuts.ts'
-import type { StatusCategory } from './types.ts'
+import type { Answer, StatusCategory, Ticket } from './types.ts'
 
 type Mode = 'public' | 'internal'
 
-// The statuses an agent can submit as. Custom statuses come later, once sending is connected.
+// The statuses an agent can submit as. Custom statuses come later.
 const STATUSES = [
   { category: 'open', label: 'Open', action: 'Send and keep Open' },
   { category: 'pending', label: 'Pending', action: 'Send as Pending' },
@@ -16,12 +16,15 @@ const STATUSES = [
 ] as const satisfies { category: StatusCategory; label: string; action: string }[]
 
 type SubmitStatus = (typeof STATUSES)[number]['category']
+type Stage = { kind: 'editing' } | { kind: 'confirming' } | { kind: 'sending' } | { kind: 'sent' } | { kind: 'failed'; message: string }
 
-export function Composer({ requester, currentStatus }: { requester: string | null; currentStatus: StatusCategory }) {
+export function Composer({ ticket, onSent }: { ticket: Ticket; onSent: (ticket: Ticket) => void }) {
+  const requester = ticket.requester?.name ?? null
+  const currentStatus = ticket.status.category
   const [mode, setMode] = useState<Mode>('public')
   const [body, setBody] = useState('')
   const [status, setStatus] = useState<SubmitStatus>('solved')
-  const [notice, setNotice] = useState(false)
+  const [stage, setStage] = useState<Stage>({ kind: 'editing' })
   const [focused, setFocused] = useState(false)
   const input = useRef<HTMLTextAreaElement>(null)
   const singleKeys = useSingleKeysEnabled()
@@ -33,18 +36,53 @@ export function Composer({ requester, currentStatus }: { requester: string | nul
     setFocused(document.activeElement === input.current)
   }, [])
 
-  const action = STATUSES.find((s) => s.category === status)!.action
+  const { action, label } = STATUSES.find((s) => s.category === status)!
+  const hasComment = body.trim() !== ''
   // Submitting only a status change, with no comment, is valid.
-  const canSubmit = body.trim() !== '' || status !== currentStatus
+  const canSubmit = hasComment || status !== currentStatus
+  const busy = stage.kind === 'confirming' || stage.kind === 'sending'
 
+  // Submitting only opens the confirmation: this writes to the production Zendesk.
   const submit = () => {
-    if (canSubmit) setNotice(true)
+    if (canSubmit && !busy) setStage({ kind: 'confirming' })
+  }
+
+  const send = async () => {
+    setStage({ kind: 'sending' })
+    const answer: Answer = { body, public: mode === 'public', status, updatedAt: ticket.updatedAt }
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(answer),
+      })
+      const result = await res.json()
+      if (!res.ok) return setStage({ kind: 'failed', message: result.error })
+      setBody('')
+      setStage({ kind: 'sent' })
+      onSent(result)
+    } catch (err) {
+      setStage({ kind: 'failed', message: String(err) })
+    }
   }
 
   const chooseStatus = (next: SubmitStatus) => {
     setStatus(next)
-    setNotice(false)
+    if (!busy) setStage({ kind: 'editing' })
   }
+
+  // In the confirmation, Cancel has focus so a stray Enter doesn't send; ⌘Enter / Ctrl+Enter confirms.
+  useEffect(() => {
+    if (stage.kind !== 'confirming') return
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault()
+        send()
+      }
+    }
+    addEventListener('keydown', onKeyDown)
+    return () => removeEventListener('keydown', onKeyDown)
+  })
 
   useShortcuts({
     'Mod+Enter': submit,
@@ -83,7 +121,7 @@ export function Composer({ requester, currentStatus }: { requester: string | nul
         value={body}
         onChange={(e) => {
           setBody(e.target.value)
-          setNotice(false)
+          if (!busy) setStage({ kind: 'editing' })
         }}
         onKeyDown={onKeyDown}
         onFocus={() => setFocused(true)}
@@ -104,6 +142,7 @@ export function Composer({ requester, currentStatus }: { requester: string | nul
             type="submit"
             variant="primary"
             disabled={!canSubmit}
+            loading={stage.kind === 'sending'}
             aria-keyshortcuts="Meta+Enter Control+Enter"
             trailingVisual={<KeybindingHint keys="Mod+Enter" variant="onPrimary" size="small" />}
           >
@@ -129,14 +168,46 @@ export function Composer({ requester, currentStatus }: { requester: string | nul
         </ButtonGroup>
       </div>
 
-      {notice && (
+      {(stage.kind === 'confirming' || stage.kind === 'sending') && (
+        <ConfirmationDialog
+          title={`${action} on ticket #${ticket.id}?`}
+          confirmButtonContent={
+            <>
+              {action} <KeybindingHint keys="Mod+Enter" variant="onPrimary" size="small" />
+            </>
+          }
+          confirmButtonType="primary"
+          confirmButtonLoading={stage.kind === 'sending'}
+          overrideButtonFocus="cancel"
+          width="large"
+          onClose={(gesture) => {
+            if (stage.kind === 'sending') return
+            if (gesture === 'confirm') send()
+            else setStage({ kind: 'editing' })
+          }}
+        >
+          <dl className="confirm-summary">
+            <dt>Sends</dt>
+            <dd>{!hasComment ? 'No comment' : mode === 'public' ? `Public reply to ${requester ?? 'the requester'}` : 'Internal note'}</dd>
+            <dt>Status</dt>
+            <dd>{status === currentStatus ? `${label} (unchanged)` : `${ticket.status.label} → ${label}`}</dd>
+          </dl>
+          {hasComment && <blockquote className={mode === 'internal' ? 'confirm-body internal' : 'confirm-body'}>{body.trim()}</blockquote>}
+        </ConfirmationDialog>
+      )}
+
+      {stage.kind === 'sent' && (
+        <Banner variant="success" title="Sent to Zendesk" onDismiss={() => setStage({ kind: 'editing' })} />
+      )}
+      {stage.kind === 'failed' && (
         <Banner
-          variant="info"
-          title="Sending isn't connected yet"
-          description="Nothing was sent to Zendesk. Your draft is kept."
-          onDismiss={() => setNotice(false)}
+          variant="critical"
+          title="Couldn't send to Zendesk"
+          description={`${stage.message} Your draft is kept.`}
+          onDismiss={() => setStage({ kind: 'editing' })}
         />
       )}
     </form>
   )
 }
+

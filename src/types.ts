@@ -48,3 +48,12 @@ export interface Ticket {
   fields: Field[]
   comments: Comment[]
 }
+
+// What the composer sends. An empty body only changes the status.
+export interface Answer {
+  body: string
+  public: boolean
+  status: 'open' | 'pending' | 'hold' | 'solved'
+  // The ticket's updatedAt when the agent loaded it, so Zendesk rejects the answer if the ticket changed since.
+  updatedAt: string
+}

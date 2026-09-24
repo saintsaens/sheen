@@ -1,8 +1,8 @@
 // Sheen backend: holds the Zendesk credentials and serves UI-shaped data to the browser.
 // v0.1 authenticates with a single API token from .env; per-agent OAuth comes later (see SPEC.md).
 
-import { createServer } from 'node:http'
-import type { Comment, Field, Person, StatusCategory, Ticket } from '../src/types.ts'
+import { createServer, type IncomingMessage } from 'node:http'
+import type { Answer, Comment, Field, Person, StatusCategory, Ticket } from '../src/types.ts'
 
 const { ZENDESK_SUBDOMAIN, ZENDESK_EMAIL, ZENDESK_API_TOKEN } = process.env
 if (!ZENDESK_SUBDOMAIN || !ZENDESK_EMAIL || !ZENDESK_API_TOKEN) {
@@ -21,9 +21,13 @@ class ZendeskError extends Error {
   }
 }
 
-async function zendesk(path: string): Promise<any> {
+async function zendesk(path: string, { method = 'GET', body }: { method?: string; body?: unknown } = {}): Promise<any> {
   const url = path.startsWith('http') ? path : `${ZENDESK}/api/v2${path}`
-  const res = await fetch(url, { headers: { Authorization: AUTH, Accept: 'application/json' } })
+  const res = await fetch(url, {
+    method,
+    headers: { Authorization: AUTH, Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
   if (!res.ok) throw new ZendeskError(res.status, `Zendesk ${res.status} on ${new URL(url).pathname}`)
   return res.json()
 }
@@ -146,19 +150,68 @@ async function getTicket(id: number): Promise<Ticket> {
   }
 }
 
+class BadRequest extends Error {}
+
+const ANSWER_STATUSES = ['open', 'pending', 'hold', 'solved']
+
+async function readAnswer(req: IncomingMessage): Promise<Answer> {
+  let raw = ''
+  for await (const chunk of req) raw += chunk
+  let answer: any
+  try {
+    answer = JSON.parse(raw)
+  } catch {
+    throw new BadRequest('Invalid JSON')
+  }
+  if (
+    typeof answer?.body !== 'string' ||
+    typeof answer.public !== 'boolean' ||
+    !ANSWER_STATUSES.includes(answer.status) ||
+    typeof answer.updatedAt !== 'string'
+  ) {
+    throw new BadRequest('Expected { body, public, status, updatedAt }')
+  }
+  return answer
+}
+
+// Adds the comment and sets the status in one update. safe_update makes Zendesk refuse it with a 409
+// if the ticket changed after the agent loaded it, instead of silently answering a stale conversation.
+async function answerTicket(id: number, answer: Answer): Promise<Ticket> {
+  const body = answer.body.trim()
+  await zendesk(`/tickets/${id}.json`, {
+    method: 'PUT',
+    body: {
+      ticket: {
+        status: answer.status,
+        safe_update: true,
+        updated_stamp: answer.updatedAt,
+        ...(body && { comment: { body, public: answer.public } }),
+      },
+    },
+  })
+  return getTicket(id)
+}
+
+function errorMessage(status: number, err: Error) {
+  if (status === 404) return 'Ticket not found'
+  if (status === 409) return 'The ticket changed in Zendesk since you opened it. Nothing was sent: reload to see the latest.'
+  return err.message
+}
+
 createServer(async (req, res) => {
   const send = (status: number, body: unknown) => {
     res.writeHead(status, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify(body))
   }
-  const match = req.method === 'GET' && req.url?.match(/^\/api\/tickets\/(\d+)$/)
-  if (!match) return send(404, { error: 'Not found' })
+  const match = req.url?.match(/^\/api\/tickets\/(\d+)$/)
+  if (!match || (req.method !== 'GET' && req.method !== 'PUT')) return send(404, { error: 'Not found' })
+  const id = Number(match[1])
   try {
-    send(200, await getTicket(Number(match[1])))
+    send(200, req.method === 'PUT' ? await answerTicket(id, await readAnswer(req)) : await getTicket(id))
   } catch (err) {
-    const status = err instanceof ZendeskError ? err.status : 500
+    const status = err instanceof ZendeskError ? err.status : err instanceof BadRequest ? 400 : 500
     console.error(err)
-    send(status, { error: status === 404 ? 'Ticket not found' : (err as Error).message })
+    send(status, { error: errorMessage(status, err as Error) })
   }
 }).listen(PORT, () => {
   console.log(`Sheen backend on http://localhost:${PORT}`)

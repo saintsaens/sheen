@@ -28,6 +28,6 @@ Single-key shortcuts can be turned off, because they conflict with screen reader
 
 A single ticket in three columns: the conversation (public replies, internal notes, attachments), an answer composer, and the ticket's properties.
 
-The composer has public reply or internal note, "Submit as" a status, and ⌘Enter / Ctrl+Enter to submit. It doesn't send to Zendesk yet.
+The composer has public reply or internal note, "Submit as" a status, and ⌘Enter / Ctrl+Enter to submit. Submitting asks for confirmation, then sends to Zendesk. Zendesk refuses the answer if the ticket changed since it was loaded.
 
 For now the backend uses one Zendesk API token from `.env` instead of per-agent sign-in.

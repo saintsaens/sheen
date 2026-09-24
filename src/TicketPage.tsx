@@ -79,7 +79,7 @@ export function TicketPage({ id }: { id: number }) {
       </main>
 
       <div className="composer-column">
-        <Composer requester={ticket.requester?.name ?? null} currentStatus={ticket.status.category} />
+        <Composer ticket={ticket} onSent={(updated) => setState({ kind: 'ready', ticket: updated })} />
       </div>
 
       <aside className="properties" aria-label="Ticket properties">
